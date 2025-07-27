@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Binary Search Performance Visualizer</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for Inter font and general body */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8; /* Light blue-gray background */
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* Align to top to prevent jumping */
+            min-height: 100vh;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 1rem; /* Rounded corners */
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            padding: 2.5rem;
+            width: 100%;
+            max-width: 1000px; /* Max width for larger screens */
+            margin-top: 20px; /* Space from top */
+        }
+        /* Style for the canvas to ensure it's responsive */
+        canvas {
+            width: 100% !important;
+            height: auto !important;
+            max-height: 500px; /* Limit height for very tall screens */
+        }
+        /* Custom scrollbar for better aesthetics */
+        textarea::-webkit-scrollbar {
+            width: 8px;
+        }
+        textarea::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        textarea::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        textarea::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+    <!-- Chart.js CDN for plotting -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
+    <!-- Chart.js plugin for logarithmic scale -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-autocolors"></script>
+</head>
+<body class="antialiased">
+    <div class="container">
+        <h1 class="text-4xl font-extrabold text-center text-gray-800 mb-8">
+            Binary Search Performance Visualizer
+        </h1>
+
+        <div class="mb-8 p-6 bg-blue-50 rounded-lg shadow-inner">
+            <p class="text-lg text-gray-70-0 mb-4">
+                Enter a comma-separated list of 'n' values (number of elements) to test the recursive binary search performance.
+                The graph will show the time taken for best, worst, and average cases.
+                For more accurate measurements, the search is repeated multiple times for each 'n'.
+            </p>
+            <div class="flex flex-col md:flex-row items-center gap-4">
+                <label for="nValuesInput" class="text-gray-700 font-semibold text-lg whitespace-nowrap">
+                    N Values:
+                </label>
+                <input
+                    type="text"
+                    id="nValuesInput"
+                    value="100,500,1000,5000,10000,20000,50000,100000,200000,500000,1000000"
+                    class="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-800 shadow-sm"
+                    placeholder="e.g., 100, 1000, 100000"
+                />
+                <button
+                    id="runExperimentBtn"
+                    class="px-6 py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200 ease-in-out transform hover:scale-105"
+                >
+                    Run Experiment & Plot
+                </button>
+            </div>
+            <div id="messageBox" class="mt-4 p-3 rounded-lg text-sm hidden" role="alert"></div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+            <div class="bg-gray-50 p-6 rounded-lg shadow-md">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">Performance Graph</h2>
+                <canvas id="performanceChart"></canvas>
+            </div>
+            <div class="bg-gray-50 p-6 rounded-lg shadow-md flex flex-col">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">Raw Data (ms) (Total over 1000 iterations)</h2>
+                <textarea
+                    id="rawDataOutput"
+                    class="flex-1 p-4 border border-gray-300 rounded-lg bg-white text-gray-800 font-mono text-sm resize-y min-h-[200px] shadow-inner"
+                    readonly
+                    placeholder="Results will appear here..."
+                ></textarea>
+            </div>
+        </div>
+
+        <script>
+            // Recursive Binary Search implementation in JavaScript
+            function recursiveBinarySearch(arr, low, high, x) {
+                if (high >= low) {
+                    const mid = low + Math.floor((high - low) / 2);
+
+                    if (arr[mid] === x) {
+                        return mid;
+                    } else if (arr[mid] > x) {
+                        return recursiveBinarySearch(arr, low, mid - 1, x);
+                    } else {
+                        return recursiveBinarySearch(arr, mid + 1, high, x);
+                    }
+                } else {
+                    return -1; // Element not present
+                }
+            }
+
+            // Function to display messages to the user
+            function showMessage(message, type = 'info') {
+                const messageBox = document.getElementById('messageBox');
+                messageBox.textContent = message;
+                messageBox.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700', 'bg-blue-100', 'text-blue-700');
+                if (type === 'error') {
+                    messageBox.classList.add('bg-red-100', 'text-red-700');
+                } else if (type === 'success') {
+                    messageBox.classList.add('bg-green-100', 'text-green-700');
+                } else {
+                    messageBox.classList.add('bg-blue-100', 'text-blue-700');
+                }
+                messageBox.scrollIntoView({ behavior: 'smooth', block: 'center' }); // Scroll to message
+            }
+
+            let performanceChart; // Global variable to hold the Chart.js instance
+
+            document.getElementById('runExperimentBtn').addEventListener('click', async () => {
+                showMessage('Running experiment... Please wait.', 'info');
+                const nValuesInput = document.getElementById('nValuesInput').value;
+                const rawDataOutput = document.getElementById('rawDataOutput');
+                rawDataOutput.value = 'Calculating...';
+
+                let n_values;
+                try {
+                    n_values = nValuesInput.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n) && n > 0);
+                    if (n_values.length === 0) {
+                        throw new Error("Please enter valid positive numbers for N values.");
+                    }
+                    n_values.sort((a, b) => a - b); // Ensure sorted for consistent plotting
+                } catch (error) {
+                    showMessage(`Input Error: ${error.message}`, 'error');
+                    rawDataOutput.value = '';
+                    if (performanceChart) {
+                        performanceChart.destroy();
+                    }
+                    return;
+                }
+
+                const time_best_case = [];
+                const time_worst_case = [];
+                const time_average_case = [];
+                let rawDataText = "N\tBest (ms)\tWorst (ms)\tAverage (ms)\n";
+
+                // Number of iterations to run each search for more accurate timing
+                const NUM_ITERATIONS = 1000; 
+
+                // Add a small delay to allow the "Running experiment..." message to render
+                await new Promise(resolve => setTimeout(resolve, 50));
+
+                for (const n of n_values) {
+                    // Generate a sorted list of n elements
+                    // Using random numbers and then sorting for more realistic average case
+                    const data = Array.from({ length: n }, () => Math.floor(Math.random() * 1000000)).sort((a, b) => a - b);
+
+                    let total_time_best = 0;
+                    let total_time_worst = 0;
+                    let total_time_average = 0;
+
+                    for (let i = 0; i < NUM_ITERATIONS; i++) {
+                        // --- Best Case ---
+                        // Search for the middle element
+                        const element_best_case = n > 0 ? data[Math.floor(n / 2)] : 0;
+                        const start_time_best = performance.now();
+                        recursiveBinarySearch(data, 0, data.length - 1, element_best_case);
+                        const end_time_best = performance.now();
+                        total_time_best += (end_time_best - start_time_best);
+
+                        // --- Worst Case ---
+                        // Search for an element not in the list (e.g., one greater than the max element)
+                        const element_worst_case = n > 0 ? data[data.length - 1] + 1 : 1;
+                        const start_time_worst = performance.now();
+                        recursiveBinarySearch(data, 0, data.length - 1, element_worst_case);
+                        const end_time_worst = performance.now();
+                        total_time_worst += (end_time_worst - start_time_worst);
+
+                        // --- Average Case ---
+                        // Search for a random existing element
+                        const element_average_case = n > 0 ? data[Math.floor(Math.random() * n)] : 0;
+                        const start_time_average = performance.now();
+                        recursiveBinarySearch(data, 0, data.length - 1, element_average_case);
+                        const end_time_average = performance.now();
+                        total_time_average += (end_time_average - start_time_average);
+                    }
+
+                    time_best_case.push(total_time_best);
+                    time_worst_case.push(total_time_worst);
+                    time_average_case.push(total_time_average);
+
+                    rawDataText += `${n}\t${total_time_best.toFixed(4)}\t${total_time_worst.toFixed(4)}\t${total_time_average.toFixed(4)}\n`;
+                }
+
+                rawDataOutput.value = rawDataText;
+                updateChart(n_values, time_best_case, time_worst_case, time_average_case);
+                showMessage('Experiment complete! Graph updated.', 'success');
+            });
+
+            function updateChart(n_values, best_data, worst_data, average_data) {
+                const ctx = document.getElementById('performanceChart').getContext('2d');
+
+                // Destroy existing chart if it exists
+                if (performanceChart) {
+                    performanceChart.destroy();
+                }
+
+                performanceChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: n_values.map(String), // Convert N values to strings for labels
+                        datasets: [
+                            {
+                                label: 'Best Case (Element at Middle)',
+                                data: best_data,
+                                borderColor: 'rgb(34, 197, 94)', // Green
+                                backgroundColor: 'rgba(34, 197, 94, 0.2)',
+                                borderWidth: 2,
+                                pointRadius: 5,
+                                pointBackgroundColor: 'rgb(34, 197, 94)',
+                                fill: false,
+                                tension: 0.1
+                            },
+                            {
+                                label: 'Worst Case (Element Not Found)',
+                                data: worst_data,
+                                borderColor: 'rgb(239, 68, 68)', // Red
+                                backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                                borderWidth: 2,
+                                pointRadius: 5,
+                                pointBackgroundColor: 'rgb(239, 68, 68)',
+                                fill: false,
+                                tension: 0.1,
+                                borderDash: [5, 5] // Dashed line
+                            },
+                            {
+                                label: 'Average Case (Random Element)',
+                                data: average_data,
+                                borderColor: 'rgb(59, 130, 246)', // Blue
+                                backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                                borderWidth: 2,
+                                pointRadius: 5,
+                                pointBackgroundColor: 'rgb(59, 130, 246)',
+                                fill: false,
+                                tension: 0.1,
+                                borderDash: [2, 2] // Dotted line
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false, // Allow canvas to resize freely
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: 'Time Taken for Recursive Binary Search vs. Number of Elements (n)',
+                                font: {
+                                    size: 18,
+                                    weight: 'bold'
+                                },
+                                color: '#333'
+                            },
+                            legend: {
+                                display: true,
+                                position: 'bottom',
+                                labels: {
+                                    font: {
+                                        size: 14
+                                    },
+                                    color: '#333'
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                type: 'logarithmic', // Logarithmic scale for X-axis
+                                title: {
+                                    display: true,
+                                    text: 'Number of Elements (n)',
+                                    font: {
+                                        size: 16,
+                                        weight: 'bold'
+                                    },
+                                    color: '#333'
+                                },
+                                ticks: {
+                                    callback: function(value, index, values) {
+                                        // Display integer labels for powers of 10
+                                        if (value === 1 || value === 10 || value === 100 || value === 1000 || value === 10000 || value === 100000 || value === 1000000) {
+                                            return value.toLocaleString();
+                                        }
+                                        return null; // Hide other labels
+                                    },
+                                    color: '#555'
+                                },
+                                grid: {
+                                    color: 'rgba(0, 0, 0, 0.1)'
+                                }
+                            },
+                            y: {
+                                title: {
+                                    display: true,
+                                    text: 'Time Taken (milliseconds)',
+                                    font: {
+                                        size: 16,
+                                        weight: 'bold'
+                                    },
+                                    color: '#333'
+                                },
+                                ticks: {
+                                    color: '#555'
+                                },
+                                grid: {
+                                    color: 'rgba(0, 0, 0, 0.1)'
+                                },
+                                min: 0 // Ensure y-axis starts at 0
+                            }
+                        }
+                    }
+                });
+            }
+
+            // Run the experiment with default values on page load
+            document.addEventListener('DOMContentLoaded', () => {
+                document.getElementById('runExperimentBtn').click();
+            });
+        </script>
+    </div>
+</body>
+</html>
